@@ -1,0 +1,47 @@
+!pip install numpy
+!pip install pandas
+!pip install scikit-learn
+!pip install openai
+import pandas as pd
+import numpy as np
+import json
+import openai
+from sklearn.metrics.pairwise import cosine_similarity
+import os
+
+CHUNK_SIZE = 600
+OVERLAP = 20
+openai.api_key = input("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");
+scripts = json.load(open("data/anime_go.json", encoding='ascii')) # https://www.kaggle.com/datasets/abdullahsamiir/anime-dataset
+text = scripts[1]["name"]
+text_list = text.split()
+chunks = [text_list[i:i+CHUNK_SIZE] for i in range(0, len(text_list), CHUNK_SIZE-OVERLAP)]
+df = pd.DataFrame(columns=['chunk', 'gpt_raw', 'embedding'])
+for chunk in chunks:
+    f = openai.Embedding.create(
+        model="text-embedding-ada-002",
+        input=" ".join(chunk),
+    )
+    df.loc[len(df.index)] = (chunk, f, np.array(f['data'][0]['embedding']))
+df.head()
+query = "Episode 8"
+f = openai.Embedding.create(
+    model="text-embedding-ada-002",
+    input=query
+)
+query_embedding = np.array(f['data'][0]['embedding'])
+
+similarity = []
+for arr in df['embedding'].values:
+    similarity.extend(cosine_similarity(query_embedding.reshape(1, -1), arr.reshape(1, -1)))
+context_chunk = chunks[np.argmax(similarity)]
+
+query_to_send = "CONTEXT: " + " ".join(context_chunk) + "\n\n" + query
+response = openai.Completion.create(
+  model="text-davinci-003",
+  prompt= query_to_send,
+  max_tokens=100,
+  temperature=0
+)
+print(query_to_send)
+print(response['choices'][0]['text'].strip())
